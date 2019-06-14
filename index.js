@@ -3,15 +3,12 @@ var http = require('http').Server(app);
 var io = require('socket.io')(http);
 var port = 3001;
 
-app.get('/', function (req, res) {
-  res.sendFile(__dirname + '/index.html');
-});
+
 
 let clientsData = {}
-let clientNames = []
 
-io.on('connection', function (socket) {
-  console.log("new Connectio request " + socket.id)
+
+io.on('connection', function (socket) {  
   socket.emit('server-requires-client-name', socket.id)
   socket.on('client-name', function (data) {
     socket.emit('client-name-ack', true);
@@ -22,6 +19,10 @@ io.on('connection', function (socket) {
     io.emit('chat message', msg);
   });
   socket.on('disconnect', function () {
+    const { rooms } = clientsData[socket.id];
+    rooms.map((roomName,index)=>{
+      io.to(roomName).emit('opponent-exit-room',{roomName})
+    })
     delete clientsData[socket.id]
     io.emit('lobby-players-list', clientsData)
   });
@@ -33,14 +34,12 @@ io.on('connection', function (socket) {
   });
   //Upon Clicking Accept
   socket.on('Accept', function (data) {
-    console.log(`received data in case of Accepting Request ${data.opponentSocketId}`)
-    let rooms = clientsData[socket.id].rooms;
-    console.log(`${rooms.length} before joining new room`);
+    
+    let rooms = clientsData[socket.id].rooms;    
+    let opponentRooms = clientsData[data.opponentSocketId].rooms    
     let roomName1 = `${clientsData[socket.id].clientName}_${clientsData[data.opponentSocketId].clientName}`
-    let roomName2 = `${clientsData[data.opponentSocketId].clientName}_${clientsData[socket.id].clientName}`
-    console.log(!rooms.length || !(rooms.include(roomName1) || rooms.include(roomName2))+" join Room Condition")
-    if (!rooms.length || !(rooms.include(roomName1) || rooms.include(roomName2))) {
-      console.log(`Inside Join Room ${roomName1}`)
+    let roomName2 = `${clientsData[data.opponentSocketId].clientName}_${clientsData[socket.id].clientName}`    
+    if (!(rooms.includes(roomName1) || rooms.includes(roomName2) || opponentRooms.includes(roomName2) || opponentRooms.includes(roomName1))) {      
       socket.join(roomName1)      
       //sending ACk to player that his request has been accepted.
       socket.broadcast.to(data.opponentSocketId).emit('player-accepted-room', { opponentSocketId: data.opponentSocketId,roomName:roomName1 });
@@ -54,14 +53,11 @@ io.on('connection', function (socket) {
     roomName:data.roomName 
     });
   });  
-  socket.on('room-message', (data) => {
-    console.log("Inside New Message")
-    if (true) {
-      console.log("Emmitting room message to all clients in the room")
+  socket.on('room-message', (data) => {    
+    if (true) {      
       io.to(data.roomName).emit('new-room-msg', { roomName:data.roomName,clientName:data.clientName,message:data.message});
     }
   });
-
 });
 
 http.listen(port, function () {
